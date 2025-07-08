@@ -124,11 +124,96 @@ func checkprotectedDirs(target string) error{
 	}
 }
 
+//func isAdmin() bool{
+//	_,err := os.Open("\\\\\\\\.\\\\PHYSICALDRIVE0")
+//	return err == nil
+//}
+
+
 func createSymlinkSmart(target, link string) error{
-	if create_folder(target)&&create_folder(link){
-		err := os.Symlink(target, link)
+
+	targetinfo,err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("[-]jdk路径：%q 不存在",target)
+			return false,nil
+		}
+		return false,fmt.Println("[-]检查目标路径失败：%w",err)
 	}
+
+	fl,err := os.Lstat(link)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err :=os.Symlink(target, link)
+			if err == nil {
+				fmt.Println("[+]成功创建链接")
+			}
+
+		}
+		err := os.Remove(link)
+		if err == nil {
+			err :=os.Symlink(target, link)
+		}
+		return false,err
+	}
+
+
+
+
+
+
+
 }
+
+func setUserEnvVar(name, value string) error {
+
+	key, err := syscall.RegOpenKeyEx(
+		syscall.HKEY_CURRENT_USER,
+		"Environment",
+		0,
+		syscall.KEY_SET_VALUE,
+	)
+	if err != nil {
+		return fmt.Errorf("打开注册表失败: %v", err)
+	}
+	defer syscall.RegCloseKey(key)
+
+	namePtr, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return fmt.Errorf("转换变量名失败: %v", err)
+	}
+
+	valuePtr, err := syscall.UTF16PtrFromString(value)
+	if err != nil {
+		return fmt.Errorf("转换变量值失败: %v", err)
+	}
+
+	err = syscall.RegSetValueEx(
+		key,
+		namePtr,
+		0,
+		syscall.REG_SZ,
+		(*byte)(unsafe.Pointer(valuePtr)),
+		uint32(len(value)+1)*2, // UTF-16字节长度（含null终止符）
+	)
+	if err != nil {
+		return fmt.Errorf("写入注册表失败: %v", err)
+	}
+
+	const (
+		HWND_BROADCAST   = 0xFFFF
+		WM_SETTINGCHANGE = 0x001A
+	)
+	env, _ := syscall.UTF16PtrFromString("Environment")
+	syscall.SendMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, uintptr(unsafe.Pointer(env)))
+
+	return nil
+
+}
+
+func checkJava
+
+
 
 
 var rootCmd = &cobra.Command{
