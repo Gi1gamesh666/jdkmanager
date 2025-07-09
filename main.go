@@ -1,89 +1,11 @@
-//package main
-//
-//import (
-//	"fmt"
-//	"log"
-//	"github.com/spf13/cobra"
-//	"syscall"
-//	"unsafe"
-//)
-//
-//const (
-//	HWND_BROADCAST   = 0xFFFF
-//	WM_SETTINGCHANGE = 0x001A
-//)
-//
-//func setUserEnvVar(name, value string) error {
-//	// 打开注册表键
-//	key, err := syscall.RegOpenKeyEx(
-//		syscall.HKEY_CURRENT_USER,
-//		"Environment",
-//		0,
-//		syscall.KEY_SET_VALUE,
-//	)
-//	if err != nil {
-//		return fmt.Errorf("打开注册表失败: %v", err)
-//	}
-//	defer syscall.RegCloseKey(key)
-//
-//	// 转换字符串为UTF-16指针
-//	namePtr, err := syscall.UTF16PtrFromString(name)
-//	if err != nil {
-//		return fmt.Errorf("转换变量名失败: %v", err)
-//	}
-//
-//	valuePtr, err := syscall.UTF16PtrFromString(value)
-//	if err != nil {
-//		return fmt.Errorf("转换变量值失败: %v", err)
-//	}
-//
-//	err = syscall.RegSetValueEx(
-//		key,
-//		namePtr,
-//		0,
-//		syscall.REG_SZ,
-//		(*byte)(unsafe.Pointer(valuePtr)),
-//		(uint32)(len(value)+1)*2,
-//	)
-//	if err != nil {
-//		return fmt.Errorf("写入注册表失败: %v", err)
-//	}
-//
-//	// 通知系统环境变量已更改
-//	userEnv, _ := syscall.UTF16PtrFromString("Environment")
-//	syscall.SendMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, uintptr(unsafe.Pointer(userEnv)))
-//
-//	return nil
-//}
-//
-//func main() {
-//	// 示例：设置用户级JAVA_HOME
-//	err := setUserEnvVar("JAVA_HOME", "C:\\Users\\YourName\\jdk-17")
-//	if err != nil {
-//		log.Fatalf("设置用户环境变量失败: %v", err)
-//	}
-//
-//	// 示例：添加到用户PATH
-//	currentPath := os.Getenv("PATH")
-//	newPath := fmt.Sprintf("%s;C:\\Users\\YourName\\bin", currentPath)
-//	err = setUserEnvVar("PATH", newPath)
-//	if err != nil {
-//		log.Fatalf("更新用户PATH失败: %v", err)
-//	}
-//
-//	fmt.Println("用户环境变量设置成功")
-//
-//
-//
-//
-//
-//}
-
 package main
 
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"os"
+	"path/filepath"
+
 )
 
 func create_folder(path string) {
@@ -213,7 +135,45 @@ func setUserEnvVar(name, value string) error {
 
 }
 
-func checkJava
+func checkJavaHome (){
+	dir ,err := filepath.Dir(os.Executable())
+	if err != nil {
+		fmt.Errorf("获取当前路径失败: %v", err)
+	}
+
+	jdkpath := "jdk"
+	javahome := filepath.Join(dir,jdkpath)
+
+	if _ := os.Getenv("JAVA_HOME"); javahome != ""{
+
+	}else{
+
+	}
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -231,6 +191,10 @@ var helloCmd = &cobra.Command{
 		fmt.Println("Hello World")
 	},
 }
+
+
+
+
 
 
 
