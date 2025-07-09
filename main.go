@@ -129,41 +129,43 @@ func checkprotectedDirs(target string) error{
 //	return err == nil
 //}
 
+func pathExists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	if err == nil {
+		return true, nil // 路径存在
+	}
+	if os.IsNotExist(err) {
+		return false, nil // 路径不存在
+	}
+	return false, err // 其他错误（如权限不足）
+}
+
 
 func createSymlinkSmart(target, link string) error{
 
-	targetinfo,err := os.Lstat(target)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("[-]jdk路径：%q 不存在",target)
-			return false,nil
-		}
-		return false,fmt.Println("[-]检查目标路径失败：%w",err)
+	if exists, err := pathExists(target); err != nil {
+		return fmt.Errorf("检查目标失败: %w", err)
+	} else if !exists {
+		return fmt.Errorf("目标路径不存在: %q", target)
 	}
 
-	fl,err := os.Lstat(link)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err :=os.Symlink(target, link)
-			if err == nil {
-				fmt.Println("[+]成功创建链接")
-			}
-
+	if exists, err := pathExists(link); err != nil {
+		return fmt.Errorf("检查链接失败: %w", err)
+	} else if exists {
+		// 存在则删除
+		if err := os.Remove(link); err != nil {
+			return fmt.Errorf("删除旧路径失败: %w", err)
 		}
-		err := os.Remove(link)
-		if err == nil {
-			err :=os.Symlink(target, link)
-		}
-		return false,err
 	}
 
+	if err := os.Symlink(target, link); err != nil {
+		return fmt.Errorf("创建链接失败: %w", err)
+	}
 
-
-
-
-
-
+	fmt.Printf("[+]成功创建链接 %q -> %q\n", link, target)
+	return nil
 }
+
 
 func setUserEnvVar(name, value string) error {
 
