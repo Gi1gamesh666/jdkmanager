@@ -138,27 +138,34 @@ func setUserEnvVar(name, value string) error {
 func checkJavaHome (){
 	dir ,err := filepath.Dir(os.Executable())
 	if err != nil {
-		fmt.Errorf("获取当前路径失败: %v", err)
+		return fmt.Errorf("[-]获取当前路径失败: %v", err)
 	}
 
 	jdkpath := "jdk"
 	javahome := filepath.Join(dir,jdkpath)
 
-	if _ := os.Getenv("JAVA_HOME"); javahome != ""{
-
-	}else{
-
+	if _, err := os.Stat(javahome); os.IsNotExist(err) {
+		return fmt.Errorf("[-] JDK路径不存在: %s", javahome)
 	}
 
+	err := setUserEnvVar("JAVA_HOME", javahome)
+	if err != nil {
+		return fmt.Errorf("[-]设置失败: %v\n", err)
+	}else{
+		fmt.Println("[+]设置成功")
+	}
 
+	fmt.Println("[+] JAVA_HOME设置成功:", javahome)
+	return nil
 
+}
+
+func listJDK (){
 
 
 
 
 }
-
-
 
 
 
