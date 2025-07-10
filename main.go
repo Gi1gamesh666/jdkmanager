@@ -5,31 +5,34 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
-
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"unsafe"
 )
 
-func create_folder(path string) {
-	if _,err := os.Stat(path); os.IsNotExist(err){
+func create_folder(path string) bool {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		err := os.MkdirAll(path, 0755)
 		if err != nil {
-			fmt.Println("创建文件夹失败：",err)
+			fmt.Println("创建文件夹失败：", err)
 			return false
 		}
 		fmt.Println("文件夹创建成功")
 		return true
-	}
-	else{
+	} else {
 		fmt.Println("文件夹已经存在")
 		return true
 	}
 }
 
-func checkprotectedDirs(target string) error{
-	protectedDirs := string[]{
-		filepath.Join(os.Getenv("SystemRoot")),       // C:\Windows
-		filepath.Join(os.Getenv("ProgramFiles")),     // C:\Program Files
+func checkprotectedDirs(target string) (error, bool) {
+	protectedDirs := []string{
+		filepath.Join(os.Getenv("SystemRoot")),        // C:\Windows
+		filepath.Join(os.Getenv("ProgramFiles")),      // C:\Program Files
 		filepath.Join(os.Getenv("ProgramFiles(x86)")), // C:\Program Files (x86)
-		os.Getenv("SystemDrive") + "\\",              // C:\
+		os.Getenv("SystemDrive") + "\\",               // C:\
 	}
 
 	for _, dir := range protectedDirs {
@@ -37,13 +40,12 @@ func checkprotectedDirs(target string) error{
 			continue
 		}
 
-		rel, err := filepath.Rel(dir, targetDir)
+		rel, err := filepath.Rel(dir, target)
 		if err == nil && !strings.HasPrefix(rel, "..") {
-			return true, nil
-		}else{
-			return false,err
+			return nil, true
 		}
 	}
+	return nil, false
 }
 
 //func isAdmin() bool{
@@ -62,8 +64,7 @@ func pathExists(path string) (bool, error) {
 	return false, err // 其他错误（如权限不足）
 }
 
-
-func createSymlinkSmart(target, link string) error{
+func createSymlinkSmart(target, link string) error {
 
 	if exists, err := pathExists(target); err != nil {
 		return fmt.Errorf("检查目标失败: %w", err)
@@ -87,7 +88,6 @@ func createSymlinkSmart(target, link string) error{
 	fmt.Printf("[+]成功创建链接 %q -> %q\n", link, target)
 	return nil
 }
-
 
 func setUserEnvVar(name, value string) error {
 
@@ -135,90 +135,97 @@ func setUserEnvVar(name, value string) error {
 
 }
 
-func checkJavaHome (){
-	dir ,err := filepath.Dir(os.Executable())
+func checkJavaHome() ([]string, error) {
+	exedir, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("[-]获取当前路径失败: %v", err)
+		return nil, fmt.Errorf("[-]获取当前路径失败: %v", err)
 	}
+
+	dir := filepath.Dir(exedir)
 
 	jdkpath := "jdk"
-	javahome := filepath.Join(dir,jdkpath)
+	javahome := filepath.Join(dir, jdkpath)
 
 	if _, err := os.Stat(javahome); os.IsNotExist(err) {
-		return fmt.Errorf("[-]JDK路径不存在: %s", javahome)
+		return nil, fmt.Errorf("[-]JDK路径不存在: %s", javahome)
 	}
 
-	err := setUserEnvVar("JAVA_HOME", javahome)
+	err = setUserEnvVar("JAVA_HOME", javahome)
 	if err != nil {
-		return fmt.Errorf("[-]设置失败: %v\n", err)
-	}else{
+		return nil, fmt.Errorf("[-]设置失败: %v\n", err)
+	} else {
 		fmt.Println("[+]设置成功")
 	}
 
 	fmt.Println("[+] JAVA_HOME设置成功:", javahome)
-	return nil
+	return nil, err
 
 }
 
-func listJDK (){
+func searchJDK() ([]string, error) {
 
-	dir ,err := filepath.Dir(os.Executable())
+	exedir, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("[-]获取当前路径失败: %v", err)
+		return nil, fmt.Errorf("[-]获取当前路径失败: %v", err)
 	}
+
+	dir := filepath.Dir(exedir)
 
 	jdkpath := "jdk"
-	javahome := filepath.Join(dir,jdkpath)
+	javahome := filepath.Join(dir, jdkpath)
 
 	if _, err := os.Stat(javahome); os.IsNotExist(err) {
-		return fmt.Errorf("[-]JDK路径不存在: %s", javahome)
+		return nil, fmt.Errorf("[-]JDK路径不存在: %s", javahome)
 	}
 
-	entries ,err := os.ReadDir(javahome)
+	entries, err := os.ReadDir(javahome)
 	if err != nil {
-		return fmt.Errorf("[-]读取目标目录失败: %v", err)
+		return nil, fmt.Errorf("[-]读取目标目录失败: %v", err)
 	}
 
 	var dirs []string
 	javaPattern := regexp.MustCompile(`^(jdk|jre)-?`)
 
 	for _, entry := range entries {
-		if entry.IsDir()&&javaPattern.MatchString(entry.name()){
-			dirs = append(dirs, entry.name())
+		if entry.IsDir() && javaPattern.MatchString(entry.Name()) {
+			dirs = append(dirs, entry.Name())
 		}
 	}
 
-	return dirs,nil
+	return dirs, nil
 
 }
 
-func chooseJava(javaVersion int)  {
+func selectVersion(versions []string) (string, error) {
+	for {
+		fmt.Println("\n请选择Java版本(输入序号):")
+		var input string
+		_, err := fmt.Scanln(&input)
+		if err != nil {
+			return "", fmt.Errorf("[-]输入错误")
+		}
 
+		choice, err := strconv.Atoi(strings.TrimSpace(input))
+		if err != nil {
+			return "", fmt.Errorf("[-]类型转换失败: %v", err)
+			continue
+		}
 
+		if choice < 0 || choice > len(versions) {
+			fmt.Printf("[-]错误: 请输入 1-%d 之间的数字\n", len(versions))
+			continue
+		}
+
+		return versions[choice-1], nil
+
+	}
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 var rootCmd = &cobra.Command{
 	Use:   "jdkmanager",
 	Short: "一个基于golang开发的专为解决Windows平台JDK管理困难而开发的轻量化JDK管理工具🔧",
 }
-
 
 var helloCmd = &cobra.Command{
 	Use:   "init",
@@ -227,13 +234,6 @@ var helloCmd = &cobra.Command{
 		fmt.Println("Hello World")
 	},
 }
-
-
-
-
-
-
-
 
 func init() {
 	rootCmd.AddCommand(helloCmd)
