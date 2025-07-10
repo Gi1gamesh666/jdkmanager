@@ -98,18 +98,18 @@ func setUserEnvVar(name, value string) error {
 		syscall.KEY_SET_VALUE,
 	)
 	if err != nil {
-		return fmt.Errorf("打开注册表失败: %v", err)
+		return fmt.Errorf("[-]打开注册表失败: %v", err)
 	}
 	defer syscall.RegCloseKey(key)
 
 	namePtr, err := syscall.UTF16PtrFromString(name)
 	if err != nil {
-		return fmt.Errorf("转换变量名失败: %v", err)
+		return fmt.Errorf("[-]转换变量名失败: %v", err)
 	}
 
 	valuePtr, err := syscall.UTF16PtrFromString(value)
 	if err != nil {
-		return fmt.Errorf("转换变量值失败: %v", err)
+		return fmt.Errorf("[-]转换变量值失败: %v", err)
 	}
 
 	err = syscall.RegSetValueEx(
@@ -121,7 +121,7 @@ func setUserEnvVar(name, value string) error {
 		uint32(len(value)+1)*2, // UTF-16字节长度（含null终止符）
 	)
 	if err != nil {
-		return fmt.Errorf("写入注册表失败: %v", err)
+		return fmt.Errorf("[-]写入注册表失败: %v", err)
 	}
 
 	const (
@@ -145,7 +145,7 @@ func checkJavaHome (){
 	javahome := filepath.Join(dir,jdkpath)
 
 	if _, err := os.Stat(javahome); os.IsNotExist(err) {
-		return fmt.Errorf("[-] JDK路径不存在: %s", javahome)
+		return fmt.Errorf("[-]JDK路径不存在: %s", javahome)
 	}
 
 	err := setUserEnvVar("JAVA_HOME", javahome)
@@ -162,12 +162,41 @@ func checkJavaHome (){
 
 func listJDK (){
 
+	dir ,err := filepath.Dir(os.Executable())
+	if err != nil {
+		return fmt.Errorf("[-]获取当前路径失败: %v", err)
+	}
+
+	jdkpath := "jdk"
+	javahome := filepath.Join(dir,jdkpath)
+
+	if _, err := os.Stat(javahome); os.IsNotExist(err) {
+		return fmt.Errorf("[-]JDK路径不存在: %s", javahome)
+	}
+
+	entries ,err := os.ReadDir(javahome)
+	if err != nil {
+		return fmt.Errorf("[-]读取目标目录失败: %v", err)
+	}
+
+	var dirs []string
+	javaPattern := regexp.MustCompile(`^(jdk|jre)-?`)
+
+	for _, entry := range entries {
+		if entry.IsDir()&&javaPattern.MatchString(entry.name()){
+			dirs = append(dirs, entry.name())
+		}
+	}
+
+	return dirs,nil
+
+}
+
+func chooseJava(javaVersion int)  {
 
 
 
 }
-
-
 
 
 
