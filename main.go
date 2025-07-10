@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"unsafe"
 )
 
@@ -90,36 +90,45 @@ func createSymlinkSmart(target, link string) error {
 }
 
 func setUserEnvVar(name, value string) error {
-
-	key, err := syscall.RegOpenKeyEx(
-		syscall.HKEY_CURRENT_USER,
-		"Environment",
+	var key windows.Handle
+	err := windows.RegOpenKeyEx(
+		windows.HKEY_CURRENT_USER,
+		windows.StringToUTF16Ptr("Environment"),
 		0,
-		syscall.KEY_SET_VALUE,
+		windows.KEY_SET_VALUE,
+		&key,
 	)
 	if err != nil {
 		return fmt.Errorf("[-]打开注册表失败: %v", err)
 	}
-	defer syscall.RegCloseKey(key)
+	defer windows.RegCloseKey(key)
 
-	namePtr, err := syscall.UTF16PtrFromString(name)
+	namePtr, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return fmt.Errorf("[-]转换变量名失败: %v", err)
 	}
 
-	valuePtr, err := syscall.UTF16PtrFromString(value)
+	valuePtr, err := windows.UTF16PtrFromString(value)
 	if err != nil {
 		return fmt.Errorf("[-]转换变量值失败: %v", err)
 	}
 
-	err = syscall.RegSetValueEx(
-		key,
-		namePtr,
+	advapi32 := windows.NewLazyDLL("advapi32.dll")
+	RegSetValueEx := advapi32.NewProc("RegSetValueEx")
+
+	ret, _, err := RegSetValueEx.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(namePtr)),
 		0,
-		syscall.REG_SZ,
-		(*byte)(unsafe.Pointer(valuePtr)),
-		uint32(len(value)+1)*2, // UTF-16字节长度（含null终止符）
+		uintptr(windows.REG_SZ),
+		uintptr(unsafe.Pointer(valuePtr)),
+		uintptr(len(value)+1)*2,
 	)
+
+	if ret != 0 {
+		return fmt.Errorf("RegSetValueEx failed: %v", err)
+	}
+
 	if err != nil {
 		return fmt.Errorf("[-]写入注册表失败: %v", err)
 	}
@@ -128,11 +137,18 @@ func setUserEnvVar(name, value string) error {
 		HWND_BROADCAST   = 0xFFFF
 		WM_SETTINGCHANGE = 0x001A
 	)
-	env, _ := syscall.UTF16PtrFromString("Environment")
-	syscall.SendMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, uintptr(unsafe.Pointer(env)))
+	env, _ := windows.UTF16PtrFromString("Environment")
+
+	user32 := windows.NewLazyDLL("user32.dll")
+	SendMessage := user32.NewProc("SendMessageW")
+
+	Ret, _, err := SendMessage.Call(HWND_BROADCAST, WM_SETTINGCHANGE, 0, uintptr(unsafe.Pointer(env)))
+
+	if Ret == 0 {
+		return fmt.Errorf("[-]SendMessage 失败: %v", err)
+	}
 
 	return nil
-
 }
 
 func checkJavaHome() ([]string, error) {
