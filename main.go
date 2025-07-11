@@ -151,10 +151,10 @@ func setUserEnvVar(name, value string) error {
 	return nil
 }
 
-func checkJavaHome() ([]string, error) {
+func checkJavaHome() ([]string, error, bool) {
 	exedir, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("[-]获取当前路径失败: %v", err)
+		return nil, fmt.Errorf("[-]获取当前路径失败: %v", err), false
 	}
 
 	dir := filepath.Dir(exedir)
@@ -163,18 +163,18 @@ func checkJavaHome() ([]string, error) {
 	javahome := filepath.Join(dir, jdkpath)
 
 	if _, err := os.Stat(javahome); os.IsNotExist(err) {
-		return nil, fmt.Errorf("[-]JDK路径不存在: %s", javahome)
+		return nil, fmt.Errorf("[-]JDK路径不存在: %s", javahome), false
 	}
 
 	err = setUserEnvVar("JAVA_HOME", javahome)
 	if err != nil {
-		return nil, fmt.Errorf("[-]设置失败: %v\n", err)
+		return nil, fmt.Errorf("[-]设置失败: %v\n", err), false
 	} else {
 		fmt.Println("[+]设置成功")
 	}
 
 	fmt.Println("[+] JAVA_HOME设置成功:", javahome)
-	return nil, err
+	return nil, err, true
 
 }
 
@@ -243,27 +243,47 @@ var rootCmd = &cobra.Command{
 	Short: "一个基于golang开发的专为解决Windows平台JDK管理困难而开发的轻量化JDK管理工具🔧",
 }
 
-var helloCmd = &cobra.Command{
-	Use:   "init",
-	Short: "初始化管理器，默认情况下会使用Java目录下的jdk，如需指定jdk路径请使用",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Hello World")
-	},
+var helpCmd = &cobra.Command{
+	Use:    "help",
+	Short:  "显示帮助信息",
+	Hidden: true,
 }
 
 func init() {
-	rootCmd.AddCommand(helloCmd)
+	rootCmd.AddCommand(helpCmd)
 }
 
 func main() {
 
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
-	rootCmd.SetHelpCommand(&cobra.Command{
-		Use:    "help",
-		Short:  "显示帮助信息",
-		Hidden: true,
-	})
+	var initCmd = &cobra.Command{
+		Use:   "init",
+		Short: "初始化管理器，默认情况下会使用Java目录下的jdk，如需指定jdk路径请使用",
+		Run: func(cmd *cobra.Command, args []string) {
+			_, _, check := checkJavaHome()
+			if check == true {
+				fmt.Println("[+]设置完成,请使用version选择java版本")
+			}
+		},
+	}
+
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "初始化完成后，选择Java版本",
+		Run: func(cmd *cobra.Command, args []string) {
+			jdks, _ := searchJDK()
+			_java, _ := selectVersion(jdks)
+			java_path := "%JAVA_HOME%" + "/" + _java
+			err := setUserEnvVar("JAVA_HOME", java_path)
+			if err != nil {
+				fmt.Printf("[-]设置环境变量失败: %v", err)
+			}
+		},
+	}
+
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(initCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
