@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,20 +13,20 @@ import (
 	"unsafe"
 )
 
-func create_folder(path string) bool {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		err := os.MkdirAll(path, 0755)
-		if err != nil {
-			fmt.Println("创建文件夹失败：", err)
-			return false
-		}
-		fmt.Println("文件夹创建成功")
-		return true
-	} else {
-		fmt.Println("文件夹已经存在")
-		return true
-	}
-}
+//func create_folder(path string) bool {
+//	if _, err := os.Stat(path); os.IsNotExist(err) {
+//		err := os.MkdirAll(path, 0755)
+//		if err != nil {
+//			fmt.Println("创建文件夹失败：", err)
+//			return false
+//		}
+//		fmt.Println("文件夹创建成功")
+//		return true
+//	} else {
+//		fmt.Println("文件夹已经存在")
+//		return true
+//	}
+//}
 
 func checkprotectedDirs(target string) (error, bool) {
 	protectedDirs := []string{
@@ -64,73 +65,92 @@ func pathExists(path string) (bool, error) {
 	return false, err // 其他错误（如权限不足）
 }
 
-func createSymlinkSmart(target, link string) error {
+//func createSymlinkSmart(target, link string) error {
+//
+//	if exists, err := pathExists(target); err != nil {
+//		return fmt.Errorf("检查目标失败: %w", err)
+//	} else if !exists {
+//		return fmt.Errorf("目标路径不存在: %q", target)
+//	}
+//
+//	if exists, err := pathExists(link); err != nil {
+//		return fmt.Errorf("检查链接失败: %w", err)
+//	} else if exists {
+//		// 存在则删除
+//		if err := os.Remove(link); err != nil {
+//			return fmt.Errorf("删除旧路径失败: %w", err)
+//		}
+//	}
+//
+//	if err := os.Symlink(target, link); err != nil {
+//		return fmt.Errorf("创建链接失败: %w", err)
+//	}
+//
+//	fmt.Printf("[+]成功创建链接 %q -> %q\n", link, target)
+//	return nil
+//}
 
-	if exists, err := pathExists(target); err != nil {
-		return fmt.Errorf("检查目标失败: %w", err)
-	} else if !exists {
-		return fmt.Errorf("目标路径不存在: %q", target)
-	}
-
-	if exists, err := pathExists(link); err != nil {
-		return fmt.Errorf("检查链接失败: %w", err)
-	} else if exists {
-		// 存在则删除
-		if err := os.Remove(link); err != nil {
-			return fmt.Errorf("删除旧路径失败: %w", err)
-		}
-	}
-
-	if err := os.Symlink(target, link); err != nil {
-		return fmt.Errorf("创建链接失败: %w", err)
-	}
-
-	fmt.Printf("[+]成功创建链接 %q -> %q\n", link, target)
-	return nil
+func formatPath(path string) string {
+	path = strings.TrimSpace(path)
+	return strings.TrimRight(path, `/\`)
 }
 
-func setUserEnvVar(name, value string) error {
-	var key windows.Handle
-	err := windows.RegOpenKeyEx(
-		windows.HKEY_CURRENT_USER,
-		windows.StringToUTF16Ptr("Environment"),
-		0,
-		windows.KEY_SET_VALUE,
-		&key,
-	)
+func setUserEnvVar(name, value string, mode int) error {
+	var key registry.Key
+	key, err := registry.OpenKey(
+		registry.CURRENT_USER,
+		"Environment",
+		registry.WRITE)
 	if err != nil {
 		return fmt.Errorf("[-]打开注册表失败: %v", err)
 	}
-	defer windows.RegCloseKey(key)
 
-	namePtr, err := windows.UTF16PtrFromString(name)
-	if err != nil {
-		return fmt.Errorf("[-]转换变量名失败: %v", err)
+	defer key.Close()
+
+	if mode == 0 {
+
+		if err := key.SetStringValue(name, value); err != nil {
+			return fmt.Errorf("[-]写入注册表失败: %v\n", err)
+		}
+
+		if err != nil {
+			return fmt.Errorf("[-]写入注册表失败: %v", err)
+		}
 	}
 
-	valuePtr, err := windows.UTF16PtrFromString(value)
-	if err != nil {
-		return fmt.Errorf("[-]转换变量值失败: %v", err)
-	}
+	if mode == 1 {
 
-	advapi32 := windows.NewLazyDLL("advapi32.dll")
-	RegSetValueEx := advapi32.NewProc("RegSetValueEx")
+		path, _, err := key.GetStringValue("Path")
+		if err != nil && err != registry.ErrNotExist {
+			return fmt.Errorf("读取PATH失败: %v", err)
+		}
 
-	ret, _, err := RegSetValueEx.Call(
-		uintptr(key),
-		uintptr(unsafe.Pointer(namePtr)),
-		0,
-		uintptr(windows.REG_SZ),
-		uintptr(unsafe.Pointer(valuePtr)),
-		uintptr(len(value)+1)*2,
-	)
+		newPath := formatPath(value)
+		existingPaths := strings.Split(path, ";")
 
-	if ret != 0 {
-		return fmt.Errorf("RegSetValueEx failed: %v", err)
-	}
+		// 检查是否已存在（不区分大小写）
+		for _, p := range existingPaths {
+			if p == "" {
+				continue
+			}
+			if strings.EqualFold(formatPath(p), newPath) {
+				return nil // 已存在则跳过
+			}
+		}
 
-	if err != nil {
-		return fmt.Errorf("[-]写入注册表失败: %v", err)
+		// 追加新路径（自动处理分隔符）
+		var newPATH string
+		if path == "" {
+			newPATH = newPath
+		} else {
+			newPATH = path + ";" + newPath
+		}
+
+		// 写入注册表
+		if err := key.SetStringValue("Path", newPATH); err != nil {
+			return fmt.Errorf("写入PATH失败: %v", err)
+		}
+
 	}
 
 	const (
@@ -166,7 +186,7 @@ func checkJavaHome() (string, error, bool) {
 		return "", fmt.Errorf("[-]JDK路径不存在: %s", javahome), false
 	}
 
-	err = setUserEnvVar("JAVA_HOME", javahome)
+	err = setUserEnvVar("JAVA_HOME", javahome, 0)
 	if err != nil {
 		return "", fmt.Errorf("[-]设置失败: %v\n", err), false
 	} else {
@@ -213,6 +233,12 @@ func searchJDK() ([]string, error) {
 }
 
 func selectVersion(versions []string) (string, error) {
+
+	fmt.Println("可用的Java版本:")
+	for i, version := range versions {
+		fmt.Printf("[%d] %s\n", i+1, version)
+	}
+
 	for {
 		fmt.Println("\n请选择Java版本(输入序号):")
 		var input string
@@ -257,13 +283,33 @@ func main() {
 
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
+	jdks, _ := searchJDK()
+	_java, _ := selectVersion(jdks)
+
+	exedir, err := os.Executable()
+	if err != nil {
+	}
+
+	dir := filepath.Dir(exedir)
+
+	jdkpath := "jdk"
+	javahome := filepath.Join(dir, jdkpath)
+
+	if _, err := os.Stat(javahome); os.IsNotExist(err) {
+	}
+
+	java_target := filepath.Join(javahome, _java, "bin")
+
 	var initCmd = &cobra.Command{
 		Use:   "init",
 		Short: "初始化管理器，默认情况下会使用Java目录下的jdk，如需指定jdk路径请使用",
 		Run: func(cmd *cobra.Command, args []string) {
-			_, _, check := checkJavaHome()
+			_, err, check := checkJavaHome()
 			if check == true {
 				fmt.Println("[+]设置完成,请使用version选择java版本")
+			}
+			if err != nil {
+				fmt.Println(err)
 			}
 		},
 	}
@@ -272,12 +318,11 @@ func main() {
 		Use:   "version",
 		Short: "初始化完成后，选择Java版本",
 		Run: func(cmd *cobra.Command, args []string) {
-			jdks, _ := searchJDK()
-			_java, _ := selectVersion(jdks)
-			java_path := "%JAVA_HOME%" + "/" + _java
-			err := setUserEnvVar("JAVA_HOME", java_path)
+
+			err := setUserEnvVar("PATH", java_target, 1)
+
 			if err != nil {
-				fmt.Printf("[-]设置环境变量失败: %v", err)
+				fmt.Println(err)
 			}
 		},
 	}
