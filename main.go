@@ -151,10 +151,10 @@ func setUserEnvVar(name, value string) error {
 	return nil
 }
 
-func checkJavaHome() ([]string, error, bool) {
+func checkJavaHome() (string, error, bool) {
 	exedir, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("[-]获取当前路径失败: %v", err), false
+		return "", fmt.Errorf("[-]获取当前路径失败: %v", err), false
 	}
 
 	dir := filepath.Dir(exedir)
@@ -163,18 +163,18 @@ func checkJavaHome() ([]string, error, bool) {
 	javahome := filepath.Join(dir, jdkpath)
 
 	if _, err := os.Stat(javahome); os.IsNotExist(err) {
-		return nil, fmt.Errorf("[-]JDK路径不存在: %s", javahome), false
+		return "", fmt.Errorf("[-]JDK路径不存在: %s", javahome), false
 	}
 
 	err = setUserEnvVar("JAVA_HOME", javahome)
 	if err != nil {
-		return nil, fmt.Errorf("[-]设置失败: %v\n", err), false
+		return "", fmt.Errorf("[-]设置失败: %v\n", err), false
 	} else {
 		fmt.Println("[+]设置成功")
 	}
 
 	fmt.Println("[+] JAVA_HOME设置成功:", javahome)
-	return nil, err, true
+	return javahome, err, true
 
 }
 
@@ -227,7 +227,7 @@ func selectVersion(versions []string) (string, error) {
 			continue
 		}
 
-		if choice < 0 || choice > len(versions) {
+		if choice < 1 || choice > len(versions) {
 			fmt.Printf("[-]错误: 请输入 1-%d 之间的数字\n", len(versions))
 			continue
 		}
